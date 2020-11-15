@@ -1,7 +1,8 @@
 import string
 from unittest import TestCase
 
-from analyzer import Analyzer
+from analyzer import Analyzer, LexerAnalyzer
+from lexem import ExtendedLexem
 
 
 class AnalyzerTestCase(TestCase):
@@ -9,11 +10,10 @@ class AnalyzerTestCase(TestCase):
     def test_normalize_rules(self):
         rules = {
             '<A>': ('abc<B>', '<B>z'),
-            '<B>': ('z', ),
+            '<B>': ('z',),
         }
         terms = set(*string.ascii_lowercase.split())
         a = Analyzer(rules, terms)
-        a.rules = a.normalize_rules(a.rules)
 
         expected = {
             '<A>': [['a', 'b', 'c', '<B>'], ['<B>', 'z']],
@@ -25,12 +25,10 @@ class AnalyzerTestCase(TestCase):
         rules = {
             '<A>': ('abc<B>', '<B>z'),
             '<B>': ('z', '<C>'),
-            '<C>': ('d', ),
+            '<C>': ('d',),
         }
         terms = set(*string.ascii_lowercase.split())
         a = Analyzer(rules, terms)
-        a.rules = a.normalize_rules(a.rules)
-        print(a.rules)
 
         self.assertListEqual(a.get_first('a'), ['a'])
         self.assertListEqual(a.get_first('b'), ['b'])
@@ -49,7 +47,6 @@ class AnalyzerTestCase(TestCase):
         }
         terms = set(*string.ascii_lowercase.split())
         a = Analyzer(rules, terms)
-        a.rules = a.normalize_rules(a.rules)
         self.assertSetEqual(a.get_follow('<B>'), {'z'})
 
         rules = {
@@ -58,7 +55,6 @@ class AnalyzerTestCase(TestCase):
             '<C>': ('d',),
         }
         a = Analyzer(rules, terms)
-        a.rules = a.normalize_rules(a.rules)
         self.assertSetEqual(set(), a.get_follow('<A>'))
         self.assertSetEqual(a.get_follow('<B>'), set(['z'] + a.get_first('<A>')))
         self.assertSetEqual(a.get_follow('<C>'), set())
@@ -69,8 +65,8 @@ class AnalyzerTestCase(TestCase):
 
     def test_transition_table(self):
         rules = {
-            '<A>': ('<B>cd', ),
-            '<B>': ('d', )
+            '<A>': ('<B>cd',),
+            '<B>': ('d',)
         }
         terms = set(*string.ascii_lowercase.split())
         a = Analyzer(rules, terms)
@@ -110,6 +106,51 @@ class AnalyzerTestCase(TestCase):
             a.analyze('(1+1)abc', '<S>')
 
     def test_split_rules_right(self):
-
         a = Analyzer({}, {'AA', 'BB', 'C'})
         self.assertEqual(['AA', 'BB', 'C', '<V>'], a.split_rules_right('AABBC<V>'))
+
+
+class LexerAnalyzerTestCase(TestCase):
+    def test_analyze(self):
+        terms = {
+            'VAR', 'BEGIN', 'END', 'INTEGER', 'CASE', 'OF', 'END_CASE', '=', '+',
+            '-', '/', 'WRITE', 'READ', ':', ';', ' ', 'AND', 'LOGICAL', 'OR', 'EQ',
+            'IF', 'THEN', 'ELSE', 'ENDIF'
+        }
+        regex_terms = {'IDENTIFIER': r'^([A-Za-z]+)$', 'CONST': r'^([0-9]+)$'}
+
+        code = """
+            VAR a, b :INTEGER;
+            BEGIN
+            a = 1;
+            b = 2999999999;
+            END
+            """
+        include_separators = {
+            'PLUS': '+',
+            'MINUS': '-',
+            'DIV': '/',
+            'MUL': '*',
+            'COLON': ':',
+            'COMMA': ',',
+            'SEMICOLON': ';',
+            'OR': 'OR',
+            'EQ': 'EQ',
+        }
+        ignore_separators = {
+            'SPACE': ' ',
+            'NEW_LINE': '\n'
+        }
+
+        a = LexerAnalyzer(regex_terms, terms, include_separators=include_separators,
+                          ignore_separators=ignore_separators)
+        print(a.analyze(code))
+
+        code = 'BEGINEND'
+
+        lexers = a.analyze(code)
+        self.assertListEqual([ExtendedLexem(name='IDENTIFIER', value='BEGINEND')], lexers)
+
+        code = '123 OR aaa'
+        lexers = a.analyze(code)
+        self.assertListEqual([ExtendedLexem('CONST', '123'), 'OR', ExtendedLexem('IDENTIFIER', 'aaa')], lexers)

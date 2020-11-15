@@ -1,7 +1,8 @@
 import re
-import string
 from dataclasses import dataclass
-from typing import List, Dict, Set
+from typing import Dict, Set
+
+from lexem import ExtendedLexem, Separator
 
 token_pattern = r'(<[A-Za-z_]+>)'
 
@@ -16,12 +17,11 @@ class TransitionFunc:
     read_input: bool = True
 
 
-
 class Analyzer:
     def __init__(self, rules: Dict, terms: Set):
         self.terms = terms
         self.rules = self.normalize_rules(rules)
-        self.transition_funcs: List[TransitionFunc] = self.init_transition_funcs()
+        # self.transition_funcs: List[TransitionFunc] = self.init_transition_funcs()
         self.transition_table = self.init_transition_table()
 
     def normalize_rules(self, rules: Dict) -> Dict:
@@ -40,10 +40,13 @@ class Analyzer:
         return alt
 
     def split_rules_right(self, right):
-        slashed_terms = [f'\\{term}' for term in self.terms if term in ('+')]
+        slashed_terms = []
+        for term in self.terms:
+            if term in ('+',):
+                term = f'\\{term}'
+            slashed_terms.append(term)
         term_groups = [f'({term})' for term in slashed_terms]
         regex = '|'.join([token_pattern, *term_groups])
-        print(regex)
         return [s for s in re.split(regex, right) if s]
 
     def get_first(self, symbol):
@@ -106,7 +109,11 @@ class Analyzer:
         table = {}
         for not_term, rules in self.rules.items():
             for rule in rules:
-                for first in self.get_first(rule[0]):
+                if rule:
+                    rules_first = rule[0]
+                else:
+                    rules_first = ''
+                for first in self.get_first(rules_first):
                     table[(not_term, first)] = rule
         return table
 
@@ -147,49 +154,59 @@ class Analyzer:
         return lexers
 
 
-def analyze(code, rules):
-    stack = ['$']
-    while code:
-        let = code[0]
-        for left, right in rules.items():
-            first = {}
+class LexerAnalyzer:
+    def __init__(self, regex_terms: Dict[str, str], terms, include_separators=None, ignore_separators=None):
+        self.regex_terms = regex_terms
+        self.terms = terms
+        self.separators = self.get_separators(include_separators, ignore_separators)
 
+    def analyze(self, code):
+        lexers = []
+        buffer = ''
+        code += ' '
+        for letter in code:
+            buffer += letter
+            sep = self.test_sep_ending(buffer)
+            if not sep:
+                continue
 
-if __name__ == '__main__':
-    with open('test_program.txt', 'r') as file:
-        code = ''.join(file.readlines())
+            buffer = buffer[:-len(sep)]
+            if buffer:
+                if buffer in self.terms:
+                    lexers.append(buffer)
+                else:
+                    lex, value = self.test_regex_lex(buffer)
+                    if lex and value:
+                        lexers.append(ExtendedLexem(name=lex, value=value))
+                    else:
+                        print(buffer)
+                        raise ValueError
+                buffer = ''
+            if not self.separators[sep].ignore:
+                lexers.append(sep)
+        if buffer:
+            print(buffer)
+            raise ValueError
+        return lexers
 
-    terms = {
-        'VAR', 'BEGIN', 'END', 'INTEGER', 'CASE', 'OF', 'END_CASE', '=', '+',
-        '-', '/', 'WRITE', 'READ', ':', ';', ' '
-    }
-    terms.update(*string.ascii_lowercase.split())
-    rules = {
-        '<PROGRAM>': ('<VAR_DEFINITION><COMPUTATIONS>',),
-        '<VAR_DEFINITION>': ('VAR<VAR_LIST>:INTEGER;',),
-        '<COMPUTATIONS>': ('BEGIN<VAR_LIST>END',),
-        '<ASSIGN_LIST>': ('<ASSIGN><ASSIGN_LIST_>',),
-        '<ASSIGN_LIST_>': ('<ASSIGN_LIST>', ''),
-        '<VAR_LIST>': ('<IDENTIFIER><VAR_LIST_>',),
-        '<VAR_LIST_>': ('<VAR_LIST>', ''),
-        '<IDENTIFIER>': ('<LETTER><IDENTIFIER_>',),
-        '<IDENTIFIER_>': ('<IDENTIFIER>', ''),
-        '<CONST>': [str(i) for i in range(10)],
-        '<LETTER>': list(string.ascii_lowercase),
-        '<EXPRESSION>': ('', ),
-        '<ASSIGN>': ('', )
-        # присваивание
-        # выражение
-        # подвыражение
-        # операнд
-        # унарный оператор
-        # бинарный оператор
-        # case
-        # список функций
-        # actions list
-        # список выбора
-        # выбор х2
-    }
-    a = Analyzer(rules, terms)
-    print(a.init_transition_funcs())
-    # analyze(code, rules)
+    def test_regex_lex(self, buffer):
+        for lex, regex in self.regex_terms.items():
+            match = re.match(regex, buffer)
+            if match:
+                return lex, match.group(1)
+        return None, None
+
+    def test_sep_ending(self, buffer):
+        for sep in self.separators:
+            if buffer.endswith(sep):
+                return sep
+        return None
+
+    @staticmethod
+    def get_separators(include_separators, ignore_separators) -> Dict[str, Separator]:
+        separators = {}
+        for name, val in include_separators.items():
+            separators[val] = Separator(name, val, ignore=False)
+        for name, val in ignore_separators.items():
+            separators[val] = Separator(name, val, ignore=True)
+        return separators

@@ -1,7 +1,5 @@
-PROGRAM
 VAR a, b: INTEGER;
 BEGIN
-    a := 5;
-    b := 6;
-    WRITE(a + b);
+    a = (5 + 7) / 3;
+    b = 6;
 END
