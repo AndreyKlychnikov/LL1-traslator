@@ -155,9 +155,9 @@ class Analyzer:
 
 
 class LexerAnalyzer:
-    def __init__(self, regex_terms: Dict[str, str], terms, include_separators=None, ignore_separators=None):
+    def __init__(self, regex_terms: Dict[str, str], reserved_words, include_separators=None, ignore_separators=None):
         self.regex_terms = regex_terms
-        self.terms = terms
+        self.reserved_words = reserved_words
         self.separators = self.get_separators(include_separators, ignore_separators)
 
     def analyze(self, code):
@@ -172,28 +172,27 @@ class LexerAnalyzer:
 
             buffer = buffer[:-len(sep)]
             if buffer:
-                if buffer in self.terms:
+                if buffer in self.reserved_words:
                     lexers.append(buffer)
                 else:
                     lex, value = self.test_regex_lex(buffer)
                     if lex and value:
                         lexers.append(ExtendedLexem(name=lex, value=value))
                     else:
-                        print(buffer)
                         raise ValueError
                 buffer = ''
             if not self.separators[sep].ignore:
                 lexers.append(sep)
+
         if buffer:
-            print(buffer)
             raise ValueError
         return lexers
 
     def test_regex_lex(self, buffer):
-        for lex, regex in self.regex_terms.items():
+        for lex_name, regex in self.regex_terms.items():
             match = re.match(regex, buffer)
             if match:
-                return lex, match.group(1)
+                return lex_name, match.group(1)
         return None, None
 
     def test_sep_ending(self, buffer):
