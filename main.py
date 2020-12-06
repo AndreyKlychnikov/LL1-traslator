@@ -1,6 +1,6 @@
-from pascal_grammar import PascalLexerAnalyzer, PascalSyntaxAnalyzer
+from translator.pascal_grammar import PascalLexerAnalyzer, PascalSyntaxAnalyzer
 
-from python_translator import PythonTranslator
+from translator.python_translator import PythonTranslator
 
 if __name__ == "__main__":
     lex_analyzer = PascalLexerAnalyzer()
