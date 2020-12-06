@@ -53,7 +53,7 @@ class LexerAnalyzer:
                     if lex and value:
                         lexers.append(ExtendedLexem(name=lex, value=value))
                     else:
-                        raise ValueError
+                        raise ValueError(f"Unknown lexer {buffer}")
                 buffer = ""
             if not self.separators[sep]:
                 lexers.append(Lexem(sep))
