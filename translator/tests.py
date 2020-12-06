@@ -164,3 +164,11 @@ class PythonTranslatorTestCase(TestCase):
         parser.available_vars = ["a"]
         with self.assertRaises(ValueError):
             parser.get_statement(lexers)
+
+    def test_raise_error_undefined_vars(self):
+        lexer_analyzer = PascalLexerAnalyzer()
+        parser = PascalSyntaxAnalyzer()
+        code = "VAR a: INTEGER;BEGIN a = b + c; END"
+        lexers = lexer_analyzer.analyze(code)
+        with self.assertRaises(ValueError):
+            parser.translate(lexers)
