@@ -26,7 +26,10 @@ class PythonTranslator:
             return f"{statement.left} = int({self.get_expr_code_from_ast(statement.right)})"
         if isinstance(statement, FuncNode):
             if statement.name == "read":
-                return f'{", ".join(statement.args)} = [int(v) for v in input().split(" ")]'
+                if len(statement.args) > 1:
+                    return f'{", ".join(statement.args)} = [int(v) for v in input().split(" ")]'
+                else:
+                    return f'{statement.args[0]} = input()'
             if statement.name == "write":
                 return f'print({", ".join(statement.args)})'
         if isinstance(statement, CaseNode):
