@@ -2,6 +2,11 @@ from dataclasses import dataclass
 
 
 @dataclass
+class Lexem:
+    name: str
+
+
+@dataclass
 class ExtendedLexem:
     name: str
     value: str

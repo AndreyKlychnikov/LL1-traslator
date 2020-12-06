@@ -2,9 +2,9 @@ import re
 from dataclasses import dataclass
 from typing import Dict, Set
 
-from lexem import ExtendedLexem, Separator
+from lexem import ExtendedLexem, Separator, Lexem
 
-token_pattern = r'(<[A-Za-z_]+>)'
+token_pattern = r"(<[A-Za-z_]+>)"
 
 
 @dataclass
@@ -21,12 +21,16 @@ class Analyzer:
     def __init__(self, rules: Dict, terms: Set):
         self.terms = terms
         self.rules = self.normalize_rules(rules)
-        # self.transition_funcs: List[TransitionFunc] = self.init_transition_funcs()
-        self.transition_table = self.init_transition_table()
 
     def normalize_rules(self, rules: Dict) -> Dict:
         for left, right in rules.items():
-            rules[left] = [self.normalize_rules_right(rules_right) for rules_right in right]
+            tmp = []
+            for alt in right:
+                if isinstance(alt, str):
+                    tmp.append(tuple(alt))
+                else:
+                    tmp.append(alt)
+            rules[left] = tmp
         return rules
 
     def normalize_rules_right(self, right):
@@ -42,11 +46,11 @@ class Analyzer:
     def split_rules_right(self, right):
         slashed_terms = []
         for term in self.terms:
-            if term in ('+',):
-                term = f'\\{term}'
+            if term in ("+",):
+                term = f"\\{term}"
             slashed_terms.append(term)
-        term_groups = [f'({term})' for term in slashed_terms]
-        regex = '|'.join([token_pattern, *term_groups])
+        term_groups = [f"({term})" for term in slashed_terms]
+        regex = "|".join([token_pattern, *term_groups])
         return [s for s in re.split(regex, right) if s]
 
     def get_first(self, symbol):
@@ -81,26 +85,37 @@ class Analyzer:
                     for x in self.get_follow(not_term):
                         funcs.append(
                             TransitionFunc(
-                                state=0, input_term=x, write_symbol=not_term, transition_state=0, output_sequence=''
+                                state=0,
+                                input_term=x,
+                                write_symbol=not_term,
+                                transition_state=0,
+                                output_sequence="",
                             )
                         )
                     continue
                 if re.match(token_pattern, rule[0]):
                     funcs.append(
-                        TransitionFunc(0, rule[0], not_term, 0, ''.join(rule[1::-1]))
+                        TransitionFunc(0, rule[0], not_term, 0, "".join(rule[1::-1]))
                     )
                 else:
                     for x in self.get_first(rule[0]):
                         funcs.append(
                             TransitionFunc(
-                                state=0, input_term=x, write_symbol=not_term, transition_state=0,
-                                output_sequence=''.join(rule[1::-1] + [rule[0]])
+                                state=0,
+                                input_term=x,
+                                write_symbol=not_term,
+                                transition_state=0,
+                                output_sequence="".join(rule[1::-1] + [rule[0]]),
                             )
                         )
         for term in self.terms - self.term_on_first_place:
             funcs.append(
                 TransitionFunc(
-                    state=0, input_term=term, write_symbol=term, transition_state=0, output_sequence=''
+                    state=0,
+                    input_term=term,
+                    write_symbol=term,
+                    transition_state=0,
+                    output_sequence="",
                 )
             )
         return funcs
@@ -112,7 +127,7 @@ class Analyzer:
                 if rule:
                     rules_first = rule[0]
                 else:
-                    rules_first = ''
+                    rules_first = ""
                 for first in self.get_first(rules_first):
                     table[(not_term, first)] = rule
         return table
@@ -127,7 +142,7 @@ class Analyzer:
         return terms
 
     def analyze(self, code, start_symbol):
-        stack = ['$', start_symbol]
+        stack = ["$", start_symbol]
         read_idx = 0
         code_len = len(code)
         lexers = []
@@ -135,7 +150,7 @@ class Analyzer:
         while read_idx < code_len:
             symbol = code[read_idx]
 
-            if stack[-1] == '$':
+            if stack[-1] == "$":
                 raise ValueError(f'Unexpected symbols: "{code[read_idx:]}"')
 
             if re.match(token_pattern, stack[-1]):
@@ -150,39 +165,47 @@ class Analyzer:
                 stack.pop()
                 read_idx += 1
             else:
-                raise ValueError(f'Unexpected symbol "{symbol}", expected "{stack[-1]}"')
+                raise ValueError(
+                    f'Unexpected symbol "{symbol}", expected "{stack[-1]}"'
+                )
         return lexers
 
 
 class LexerAnalyzer:
-    def __init__(self, regex_terms: Dict[str, str], reserved_words, include_separators=None, ignore_separators=None):
+    def __init__(
+        self,
+        regex_terms: Dict[str, str],
+        reserved_words,
+        include_separators=None,
+        ignore_separators=None,
+    ):
         self.regex_terms = regex_terms
         self.reserved_words = reserved_words
         self.separators = self.get_separators(include_separators, ignore_separators)
 
     def analyze(self, code):
         lexers = []
-        buffer = ''
-        code += ' '
+        buffer = ""
+        code += " "
         for letter in code:
             buffer += letter
             sep = self.test_sep_ending(buffer)
             if not sep:
                 continue
 
-            buffer = buffer[:-len(sep)]
+            buffer = buffer[: -len(sep)]
             if buffer:
                 if buffer in self.reserved_words:
-                    lexers.append(buffer)
+                    lexers.append(Lexem(buffer))
                 else:
                     lex, value = self.test_regex_lex(buffer)
                     if lex and value:
                         lexers.append(ExtendedLexem(name=lex, value=value))
                     else:
                         raise ValueError
-                buffer = ''
+                buffer = ""
             if not self.separators[sep].ignore:
-                lexers.append(sep)
+                lexers.append(Lexem(sep))
 
         if buffer:
             raise ValueError
