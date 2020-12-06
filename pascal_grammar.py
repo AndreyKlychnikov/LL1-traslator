@@ -24,7 +24,7 @@ reserved_words = {
 class PascalLexerAnalyzer(LexerAnalyzer):
     def __init__(self):
         include_separators = ["+", "-", "/", "=", ":", ",", ";", "(", ")"]
-        ignore_separators = [" ", "\n"]
+        ignore_separators = [" ", "\n", "\t"]
         regex_terms = {"IDENTIFIER": r"^([A-Za-z]{1,11})$", "CONST": r"^([0-9]+)$"}
         super().__init__(
             regex_terms,
@@ -159,10 +159,10 @@ class PascalSyntaxAnalyzer:
             node = self.get_parentheses_expr(lexers)
 
             if lexers.cur_lex.name not in ("+", "-", "/"):
-                if lexers.cur_lex.name == ')':
+                if lexers.cur_lex.name == ")":
                     return node
                 else:
-                    raise ValueError(f'Unexpected {lexers.cur_lex}')
+                    raise ValueError(f"Unexpected {lexers.cur_lex}")
             operand1 = node
             op = lexers.cur_lex.name
             lexers.read_next_lex()
@@ -185,7 +185,7 @@ class PascalSyntaxAnalyzer:
             lexers.read_next_lex()
             operand2 = self.get_expr(lexers)
             if not operand2:
-                raise ValueError('Second argument not found.')
+                raise ValueError("Second argument not found.")
             return ExpressionNode(operand1=operand1, op=op, operand2=operand2)
         if lexers.cur_lex.name == "-":
             op = lexers.cur_lex.name
