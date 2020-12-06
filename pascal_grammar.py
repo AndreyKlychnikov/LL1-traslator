@@ -1,32 +1,12 @@
-import string
-from dataclasses import dataclass, field
-from typing import Dict, List, Tuple, Union
-
-from analyzer import LexerAnalyzer, Analyzer
-from lexem import Lexem
-
-
-class Lexers:
-    def __init__(self, lexers: List[Lexem]):
-        self.lexers = lexers
-        self.idx = 0
-
-    @property
-    def cur_lex(self):
-        try:
-            return self.lexers[self.idx]
-        except IndexError:
-            return None
-
-    def read_next_lex(self):
-        self.idx += 1
-
-
-@dataclass
-class ASTNode:
-    name: str
-    data: Dict = field(default_factory=dict)
-
+from lexer_analyzer import LexerAnalyzer, Lexers
+from nodes import (
+    ParenthesesNode,
+    ExpressionNode,
+    AssignNode,
+    ProgramNode,
+    FuncNode,
+    CaseNode,
+)
 
 reserved_words = {
     "VAR",
@@ -38,33 +18,13 @@ reserved_words = {
     "END_CASE",
     "WRITE",
     "READ",
-    "AND",
-    "LOGICAL",
-    "OR",
-    "EQ",
-    "IF",
-    "THEN",
-    "ELSE",
-    "ENDIF",
 }
 
 
 class PascalLexerAnalyzer(LexerAnalyzer):
     def __init__(self):
-        include_separators = {
-            "PLUS": "+",
-            "MINUS": "-",
-            "DIV": "/",
-            "ASSIGN_OP": "=",
-            "OR": "OR",
-            "EQ": "EQ",
-            "COLON": ":",
-            "COMMA": ",",
-            "SEMICOLON": ";",
-            "PAR_OPEN": "(",
-            "PAR_CLOSE": ")",
-        }
-        ignore_separators = {"SPACE": " ", "NEW_LINE": "\n"}
+        include_separators = ["+", "-", "/", "=", ":", ",", ";", "(", ")"]
+        ignore_separators = [" ", "\n"]
         regex_terms = {"IDENTIFIER": r"^([A-Za-z]{1,11})$", "CONST": r"^([0-9]+)$"}
         super().__init__(
             regex_terms,
@@ -74,217 +34,140 @@ class PascalLexerAnalyzer(LexerAnalyzer):
         )
 
 
-pascal_terms = {
-    "VAR",
-    "BEGIN",
-    "END",
-    "INTEGER",
-    "CASE",
-    "OF",
-    "END_CASE",
-    "=",
-    "+",
-    "-",
-    "/",
-    "WRITE",
-    "READ",
-    ":",
-    ";",
-    " ",
-    "AND",
-    "LOGICAL",
-    "OR",
-    "EQ",
-    "IF",
-    "THEN",
-    "ELSE",
-    "ENDIF",
-}
-pascal_terms.update(*string.ascii_lowercase.split())
-pascal_terms.update(*[str(i) for i in range(10)])
+def endswith(terms):
+    def decorator(function):
+        def wrapper(self, lexers, *args):
+            result = function(self, lexers, *args)
+            assert_terms_equal(terms, lexers)
+            return result
+
+        return wrapper
+
+    return decorator
 
 
-class PascalSyntaxAnalyzer(Analyzer):
+def startswith(terms, read_next=True):
+    def decorator(function):
+        def wrapper(self, lexers, *args):
+            assert_terms_equal(terms, lexers, read_next)
+            result = function(self, lexers, *args)
+            return result
+
+        return wrapper
+
+    return decorator
+
+
+endswith_semicolon = endswith([";"])
+
+
+def assert_terms_equal(terms, lexers: Lexers, read_next=True):
+    for term in terms:
+        if not lexers.cur_lex:
+            raise ValueError(f'Expected "{term}"')
+        if lexers.cur_lex.name != term:
+            raise ValueError(f'Unexpected "{lexers.cur_lex.name}", expected "{term}"')
+        if read_next:
+            lexers.read_next_lex()
+
+
+class PascalSyntaxAnalyzer:
     def __init__(self):
-        rules: Dict[str, List[Union[Tuple[str]], str]] = {
-            "<PROGRAM>": [("<VAR_DEFINITION>", "<COMPUTATIONS>")],
-            "<VAR_DEFINITION>": [("VAR", "<VAR_LIST>", ":", "INTEGER", ";")],
-            "<COMPUTATIONS>": [("BEGIN", "<ASSIGN_LIST>", "END")],
-            "<ASSIGN_LIST>": [("<ASSIGN>", "<ASSIGN_LIST_>")],
-            "<ASSIGN_LIST_>": ["<ASSIGN_LIST>", ";"],
-            "<VAR_LIST>": [("<IDENTIFIER>", "<VAR_LIST_>")],
-            "<VAR_LIST_>": ["<VAR_LIST>", ""],
-            "<EXPRESSION>": [
-                ("<UNARY_OPERATOR>", "<SUB_EXPRESSION>"),
-                ("<SUB_EXPRESSION>",),
-            ],
-            "<ASSIGN>": [("<IDENTIFIER>", "=", "<EXPRESSION>", ";")],
-            "<SUB_EXPRESSION>": [
-                ("(", "<EXPRESSION>", ")"),
-                "<OPERAND>",
-                ("<SUB_EXPRESSION>", "<BINARY_OPERATOR>", "<SUB_EXPRESSION>"),
-            ],
-            "<BINARY_OPERATOR>": ["+", "-", "/"],
-            "<UNARY_OPERATOR>": ["-"],
-            "<OPERAND>": ["<IDENTIFIER>", "<CONST>"],
-            "<FUNCTION>": [
-                ("READ", "(", "<VAR_LIST>", ")"),
-                ("WRITE", "(", "<VAR_LIST>", ")"),
-            ],
-            "<CASE>": [("CASE", "<EXPRESSION>", "OF", "<CHOICE_LIST>", "END_CASE")],
-            "<CHOICE_LIST>": ["<CHOICE>", ("<CHOICE>", "<CHOICE_LIST>")],
-            "<CHOICE>": [("<CONST>", ":", "<ASSIGN>")],
-        }
         self.available_vars = []
-        super().__init__(rules, pascal_terms)
 
-    def translate(self, lexers: List[Lexem]):
-        lexers = Lexers(lexers)
-
-        root = ASTNode(
-            "PROGRAM",
-            {
-                "var_def": self.get_var_def(lexers),
-                "statements": self.get_statements(lexers),
-            },
+    def translate(self, lexers: Lexers):
+        return ProgramNode(
+            variables=self.get_var_def(lexers), statements=self.get_statements(lexers)
         )
-        return root
 
+    @startswith(["VAR"])
+    @endswith([":", "INTEGER", ";"])
     def get_var_def(self, lexers: Lexers):
-        if lexers.cur_lex.name != "VAR":
-            raise ValueError('Expected VAR')
+        self.available_vars = self.get_identifier_list(lexers)
+        return self.available_vars
 
-        lexers.read_next_lex()
-        variables = self.get_identifier_list(lexers)
-        if lexers.cur_lex.name != ':':
-            raise ValueError('Expected ":"')
-        lexers.read_next_lex()
-        if lexers.cur_lex.name != 'INTEGER':
-            raise ValueError('Expected "INTEGER"')
-        lexers.read_next_lex()
-        if lexers.cur_lex.name != ';':
-            raise ValueError
-        lexers.read_next_lex()
-
-        self.available_vars = variables
-
-        return ASTNode("var_def", {"variables": variables})
-
+    @startswith(["IDENTIFIER"], read_next=False)
     def get_identifier_list(self, lexers):
-        if lexers.cur_lex.name != "IDENTIFIER":
-            raise ValueError
-        variables = []
+        identifiers = []
         while lexers.cur_lex.name == "IDENTIFIER":
-            variables.append(lexers.cur_lex.value)
+            identifiers.append(lexers.cur_lex.value)
             lexers.read_next_lex()
             if lexers.cur_lex.name != ",":
                 break
             lexers.read_next_lex()
-        return variables
+        return identifiers
 
+    @startswith(["BEGIN"])
+    @endswith(["END"])
     def get_statements(self, lexers: Lexers):
-        if lexers.cur_lex.name != "BEGIN":
-            raise ValueError
-        lexers.read_next_lex()
         statements = []
         while lexers.cur_lex and lexers.cur_lex.name != "END":
             statements.append(self.get_statement(lexers))
+        return statements
 
-        if lexers.cur_lex.name != "END":
-            raise ValueError
-        lexers.read_next_lex()
-
-        data = {"statements": statements}
-        return ASTNode("statements", data)
-
+    @endswith_semicolon
     def get_statement(self, lexers: Lexers):
         if lexers.cur_lex.name == "IDENTIFIER":
             node = self.get_assign(lexers)
         elif lexers.cur_lex.name == "WRITE" or lexers.cur_lex.name == "READ":
-            node_name = lexers.cur_lex.name.lower()
+            func_name = lexers.cur_lex.name.lower()
             lexers.read_next_lex()
-            if lexers.cur_lex.name != '(':
-                raise ValueError('( expected')
-            lexers.read_next_lex()
+            assert_terms_equal(["("], lexers)
             variables = self.get_identifier_list(lexers)
-            if lexers.cur_lex.name != ')':
-                raise ValueError(') expected')
-            lexers.read_next_lex()
-            node = ASTNode(node_name, {"variables": variables})
+            assert_terms_equal([")"], lexers)
+            node = FuncNode(name=func_name, args=variables)
         elif lexers.cur_lex.name == "CASE":
-            lexers.read_next_lex()
-            expr = self.get_expr(lexers)
-            if lexers.cur_lex.name != "OF":
-                raise ValueError
-            lexers.read_next_lex()
-            choices = self.get_choice_list(lexers)
-            if lexers.cur_lex.name != "END_CASE":
-                raise ValueError
-            lexers.read_next_lex()
-            node = ASTNode("case", {"expr": expr, "choices": choices})
+            node = self.get_case(lexers)
         else:
-            raise ValueError
-        if lexers.cur_lex.name != ";":
-            raise ValueError
-        lexers.read_next_lex()
+            raise ValueError("Invalid statement")
         return node
+
+    @endswith(["END_CASE"])
+    @startswith(["CASE"])
+    def get_case(self, lexers):
+        expr = self.get_expr(lexers)
+        assert_terms_equal(["OF"], lexers)
+        choices = self.get_choice_list(lexers)
+        return CaseNode(expr=expr, choices=choices)
 
     def get_choice_list(self, lexers):
         choices = {}
-        while True:
-            if lexers.cur_lex.name != "CONST":
-                raise ValueError
-            val = lexers.cur_lex.value
-            lexers.read_next_lex()
-            if lexers.cur_lex.name != ":":
-                raise ValueError
-            lexers.read_next_lex()
-            assign = self.get_assign(lexers)
-            if lexers.cur_lex.name != ";":
-                raise ValueError
+        while lexers.cur_lex and lexers.cur_lex.name != "END_CASE":
+            val, assign = self.get_choice(lexers)
             choices[val] = assign
+        return choices
 
-            lexers.read_next_lex()
-            if lexers.cur_lex.name == "END_CASE":
-                return choices
+    @startswith(["CONST"], read_next=False)
+    @endswith_semicolon
+    def get_choice(self, lexers):
+        val = lexers.cur_lex.value
+        lexers.read_next_lex()
+        assert_terms_equal([":"], lexers)
+        return val, self.get_assign(lexers)
 
+    @startswith(["IDENTIFIER"], read_next=False)
     def get_assign(self, lexers):
         if lexers.cur_lex.value not in self.available_vars:
-            raise ValueError(f'Unknown variable {lexers.cur_lex.value}')
-        data = {"left": lexers.cur_lex.value}
+            raise ValueError(f"Unknown variable {lexers.cur_lex.value}")
+        left = lexers.cur_lex.value
         lexers.read_next_lex()
-        if lexers.cur_lex.name != "=":
-            raise ValueError('= expected')
-        lexers.read_next_lex()
-        data["right"] = self.get_expr(lexers)
-        return ASTNode("assign", data)
+        assert_terms_equal(["="], lexers)
+        return AssignNode(left=left, right=self.get_expr(lexers))
 
     def get_expr(self, lexers: Lexers):
         if lexers.cur_lex.name == "(":
-            lexers.read_next_lex()
-            expr = self.get_expr(lexers)
-            if lexers.cur_lex.name != ")":
-                return ValueError
-            lexers.read_next_lex()
+            node = self.get_parentheses_expr(lexers)
 
-            node = ASTNode("parentheses_expr", {"expr": expr})
-
-            if (
-                not lexers.cur_lex
-                or lexers.cur_lex.name == ")"
-                or lexers.cur_lex.name == ";"
-            ):
-                return node
             if lexers.cur_lex.name not in ("+", "-", "/"):
-                raise ValueError
+                if lexers.cur_lex.name == ')':
+                    return node
+                else:
+                    raise ValueError(f'Unexpected {lexers.cur_lex}')
             operand1 = node
             op = lexers.cur_lex.name
             lexers.read_next_lex()
             operand2 = self.get_expr(lexers)
-            # lexers.read_next_lex()  # (
-            return ASTNode(
-                "expr", {"operand1": operand1, "op": op, "operand2": operand2}
-            )
+            return ExpressionNode(operand1=operand1, op=op, operand2=operand2)
         if lexers.cur_lex.name == "CONST" or lexers.cur_lex.name == "IDENTIFIER":
             operand1 = lexers.cur_lex.value
             lexers.read_next_lex()
@@ -301,11 +184,16 @@ class PascalSyntaxAnalyzer(Analyzer):
             op = lexers.cur_lex.name
             lexers.read_next_lex()
             operand2 = self.get_expr(lexers)
-            return ASTNode(
-                "expr", {"operand1": operand1, "op": op, "operand2": operand2}
-            )
+            if not operand2:
+                raise ValueError('Second argument not found.')
+            return ExpressionNode(operand1=operand1, op=op, operand2=operand2)
         if lexers.cur_lex.name == "-":
             op = lexers.cur_lex.name
             lexers.read_next_lex()
             operand1 = self.get_expr(lexers)
-            return ASTNode("expr", {"operand1": operand1, "op": op})
+            return ExpressionNode(operand1=operand1, op=op)
+
+    @startswith(["("])
+    @endswith([")"])
+    def get_parentheses_expr(self, lexers):
+        return ParenthesesNode(node=self.get_expr(lexers))
