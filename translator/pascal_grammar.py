@@ -1,5 +1,5 @@
-from lexer_analyzer import LexerAnalyzer, Lexers
-from nodes import (
+from .lexer_analyzer import LexerAnalyzer, Lexers
+from .nodes import (
     ParenthesesNode,
     ExpressionNode,
     AssignNode,

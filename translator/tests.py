@@ -1,16 +1,16 @@
 from unittest import TestCase
 
-from lexem import ExtendedLexem, Lexem
-from lexer_analyzer import LexerAnalyzer
-from nodes import (
+from .lexem import ExtendedLexem, Lexem
+from .lexer_analyzer import LexerAnalyzer
+from .nodes import (
     ProgramNode,
     AssignNode,
     CaseNode,
     ExpressionNode,
     FuncNode,
 )
-from pascal_grammar import PascalSyntaxAnalyzer, PascalLexerAnalyzer
-from python_translator import PythonTranslator
+from .pascal_grammar import PascalSyntaxAnalyzer, PascalLexerAnalyzer
+from .python_translator import PythonTranslator
 
 
 class LexerAnalyzerTestCase(TestCase):

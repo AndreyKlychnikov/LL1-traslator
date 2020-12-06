@@ -1,7 +1,7 @@
 import re
 from typing import Dict, List, Union
 
-from lexem import ExtendedLexem, Lexem
+from .lexem import ExtendedLexem, Lexem
 
 token_pattern = r"(<[A-Za-z_]+>)"
 

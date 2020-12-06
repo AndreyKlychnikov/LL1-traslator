@@ -1,6 +1,6 @@
 from typing import Union
 
-from nodes import (
+from .nodes import (
     ProgramNode,
     AssignNode,
     FuncNode,
