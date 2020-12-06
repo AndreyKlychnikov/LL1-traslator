@@ -172,3 +172,11 @@ class PythonTranslatorTestCase(TestCase):
         lexers = lexer_analyzer.analyze(code)
         with self.assertRaises(ValueError):
             parser.translate(lexers)
+
+    def test_raise_error_with_code_after_end(self):
+        lexer_analyzer = PascalLexerAnalyzer()
+        parser = PascalSyntaxAnalyzer()
+        code = "VAR a: INTEGER;BEGIN a = 1; END test"
+        lexers = lexer_analyzer.analyze(code)
+        with self.assertRaises(ValueError):
+            parser.translate(lexers)

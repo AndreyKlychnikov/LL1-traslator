@@ -76,9 +76,12 @@ class PascalSyntaxAnalyzer:
         self.available_vars = []
 
     def translate(self, lexers: Lexers):
-        return ProgramNode(
+        program = ProgramNode(
             variables=self.get_var_def(lexers), statements=self.get_statements(lexers)
         )
+        if lexers.cur_lex:
+            raise ValueError(f'Unexpected lexer before END: {lexers.cur_lex}')
+        return program
 
     @startswith(["VAR"])
     @endswith([":", "INTEGER", ";"])
@@ -114,9 +117,11 @@ class PascalSyntaxAnalyzer:
             lexers.read_next_lex()
             assert_terms_equal(["("], lexers)
             variables = self.get_identifier_list(lexers)
-            undefined_vars = [var for var in variables if var not in self.available_vars]
+            undefined_vars = [
+                var for var in variables if var not in self.available_vars
+            ]
             if undefined_vars:
-                raise ValueError(f'Undefined variables {undefined_vars}')
+                raise ValueError(f"Undefined variables {undefined_vars}")
             assert_terms_equal([")"], lexers)
             node = FuncNode(name=func_name, args=variables)
         elif lexers.cur_lex.name == "CASE":
@@ -172,8 +177,11 @@ class PascalSyntaxAnalyzer:
             operand2 = self.get_expr(lexers)
             return ExpressionNode(operand1=operand1, op=op, operand2=operand2)
         if lexers.cur_lex.name == "CONST" or lexers.cur_lex.name == "IDENTIFIER":
-            if lexers.cur_lex.name == 'IDENTIFIER' and lexers.cur_lex.value not in self.available_vars:
-                raise ValueError(f'Undefined variable {lexers.cur_lex.value}')
+            if (
+                lexers.cur_lex.name == "IDENTIFIER"
+                and lexers.cur_lex.value not in self.available_vars
+            ):
+                raise ValueError(f"Undefined variable {lexers.cur_lex.value}")
             operand1 = lexers.cur_lex.value
             lexers.read_next_lex()
             if (
